@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface Photo {
   id: string
@@ -20,11 +20,49 @@ interface PhotoGridProps {
 }
 
 export function PhotoGrid({ photos, canDelete, onDeletePhoto, onDeletePhotos }: PhotoGridProps) {
-  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null)
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isSelecting, setIsSelecting] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const touchStartX = useRef(0)
+  const touchEndX = useRef(0)
+
+  const selectedPhoto = selectedIndex >= 0 ? photos[selectedIndex] : null
+
+  const goToPrev = useCallback(() => {
+    if (selectedIndex > 0) setSelectedIndex(selectedIndex - 1)
+  }, [selectedIndex])
+
+  const goToNext = useCallback(() => {
+    if (selectedIndex < photos.length - 1) setSelectedIndex(selectedIndex + 1)
+  }, [selectedIndex, photos.length])
+
+  useEffect(() => {
+    if (selectedIndex < 0) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goToPrev()
+      else if (e.key === 'ArrowRight') goToNext()
+      else if (e.key === 'Escape') setSelectedIndex(-1)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedIndex, goToPrev, goToNext])
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    touchEndX.current = e.changedTouches[0].clientX
+    const diff = touchStartX.current - touchEndX.current
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) goToNext()
+      else goToPrev()
+    }
+  }
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -82,7 +120,7 @@ export function PhotoGrid({ photos, canDelete, onDeletePhoto, onDeletePhotos }: 
     setIsDeleting(true)
     try {
       await onDeletePhoto(photo.id, photo.file_path)
-      setSelectedPhoto(null)
+      setSelectedIndex(-1)
     } finally {
       setIsDeleting(false)
     }
@@ -159,7 +197,7 @@ export function PhotoGrid({ photos, canDelete, onDeletePhoto, onDeletePhotos }: 
 
       {/* Photo Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {photos.map((photo) => (
+        {photos.map((photo, index) => (
           <div
             key={photo.id}
             className={`aspect-square relative rounded-lg overflow-hidden cursor-pointer bg-gray-100 transition-all ${
@@ -169,7 +207,7 @@ export function PhotoGrid({ photos, canDelete, onDeletePhoto, onDeletePhotos }: 
             }`}
             onClick={() => {
               if (isSelecting) toggleSelect(photo.id)
-              else setSelectedPhoto(photo)
+              else setSelectedIndex(index)
             }}
           >
             <Image
@@ -198,9 +236,41 @@ export function PhotoGrid({ photos, canDelete, onDeletePhoto, onDeletePhotos }: 
       {/* Photo Modal */}
       {selectedPhoto && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center p-4 z-50"
-          onClick={() => setSelectedPhoto(null)}
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50"
+          onClick={() => setSelectedIndex(-1)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
         >
+          {/* Left Arrow */}
+          {selectedIndex > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); goToPrev() }}
+              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-10 bg-black bg-opacity-50 hover:bg-opacity-80 text-white rounded-full w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center transition-colors"
+            >
+              <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+
+          {/* Right Arrow */}
+          {selectedIndex < photos.length - 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); goToNext() }}
+              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-10 bg-black bg-opacity-50 hover:bg-opacity-80 text-white rounded-full w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center transition-colors"
+            >
+              <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+
+          {/* Photo Counter */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white text-sm bg-black bg-opacity-50 px-3 py-1 rounded-full z-10">
+            {selectedIndex + 1} / {photos.length}
+          </div>
+
+          {/* Image + Controls */}
           <div
             className="relative max-h-[85vh] max-w-[90vw] flex flex-col bg-black rounded-lg overflow-hidden"
             onClick={(e) => e.stopPropagation()}
@@ -233,7 +303,7 @@ export function PhotoGrid({ photos, canDelete, onDeletePhoto, onDeletePhotos }: 
                 )}
                 <button
                   className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-sm transition-colors"
-                  onClick={() => setSelectedPhoto(null)}
+                  onClick={() => setSelectedIndex(-1)}
                 >
                   Close
                 </button>
