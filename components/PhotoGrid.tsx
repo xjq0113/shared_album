@@ -5,6 +5,8 @@ import { useState } from 'react'
 
 interface Photo {
   id: string
+  album_id: string
+  uploader_id: string
   file_url: string
   file_path: string
   created_at: string
